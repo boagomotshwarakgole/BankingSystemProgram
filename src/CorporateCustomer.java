@@ -1,30 +1,34 @@
 /* The first Subclass that presents the Coporate Customer.*/
 
-public class CorporateCustomer extends  Customer
+public class CorporateCustomer extends  Customer implements Corporate
 {
     private String CompanyName;
-    private String CompanyAddress;
     private String taxID;
+    private String RegistrationNumber;
 
-    public CorporateCustomer(String CompanyName, String CompanyAddress, String taxID)
+    public CorporateCustomer(String address, String customerID, String phoneNumber,
+                             String companyName, String taxID, String registrationNumber)
     {
-        this.CompanyName = CompanyName;
-        this.CompanyAddress = CompanyAddress;
+        super(address, customerID, phoneNumber);
+        this.CompanyName = companyName;
         this.taxID = taxID;
+        this.RegistrationNumber = registrationNumber;
     }
 
     public String getCompanyName()
     {
         return CompanyName;
     }
-    public String getCompanyAddress()
-    {
-        return CompanyAddress;
 
-    }
-
+    @Override
     public String getTaxID()
     {
         return taxID;
+    }
+
+    @Override
+    public String getRegistrationNumber()
+    {
+        return RegistrationNumber;
     }
 }

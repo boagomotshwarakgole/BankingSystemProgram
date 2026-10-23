@@ -2,8 +2,8 @@
 which is  individual customer and corporate customer. it is a superclass tbh. */
 
 
-import java.util.ArrayList
-import java.util.List
+import java.util.ArrayList;
+import java.util.List;
 
 public class Customer
 {
@@ -19,6 +19,7 @@ public class Customer
         this.address = address;
         this.customerID = customerID;
         this.phoneNumber = phoneNumber;
+        this.accountList = new ArrayList<>();
         }
 
         // public Methods//
