@@ -1,5 +1,7 @@
 public interface Corporate
 {
  String getRegistrationNumber();
- String getTaxID()
+
+ String getTaxID();
+
 }

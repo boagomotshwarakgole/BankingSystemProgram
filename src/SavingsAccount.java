@@ -1,11 +1,11 @@
 public class SavingsAccount extends Account
 {
-  private final double INTEREST_RATE;
+  private final double INTEREST_RATE = 0.05;
 
-  public SavingsAccount(double balance, double interestRate,String dateOpened,double minimalDeposit,String accountType,Customer customer, String accountNumber)
+  public SavingsAccount(double balance,String dateOpened,double minimalDeposit,String accountType,Customer customer, String accountNumber)
   {
     super(accountNumber , balance, dateOpened, minimalDeposit, accountType,customer);
-    this.INTEREST_RATE = interestRate;
+
   }
 
   public  double getInterestRate()
