@@ -34,7 +34,7 @@ public abstract class TransferTransaction extends Transaction
 
               if(getAmount() <= 0)
               {
-                  System.out.println("Transfer Failed: Amount is negative");
+                  System.out.println("Transfer Failed: Amount is greater than zero.");
                   return;
               }
 

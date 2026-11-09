@@ -7,7 +7,7 @@ public class EmployedCustomer extends IndividualCustomer implements Employable
 
     public EmployedCustomer(String CompanyName,String CompanyAddress, String Occupation,String firstName, String lastName, String nationalID, int age, String address, String phoneNumber,String customerID)
     {
-        super(firstName,lastName,nationalID,age,address,phoneNumber,customerID);
+        super(firstName, lastName, nationalID, age, phoneNumber, customerID, address);
         this.companyName = CompanyName;
         this.companyAddress = CompanyAddress;
         this.occupation = Occupation;

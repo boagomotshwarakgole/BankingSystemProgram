@@ -12,6 +12,7 @@ public class IndividualCustomer extends Customer
         this.firstName = firstName;
         this.lastName = lastName;
         this.nationalID = nationalID;
+        this.age = age;
 
 
     }
