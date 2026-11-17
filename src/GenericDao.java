@@ -9,4 +9,3 @@ public interface GenericDao<T> {
     boolean update(T entity);
     boolean delete(T entity);
     List<T> getAll();
-}

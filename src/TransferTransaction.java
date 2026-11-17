@@ -1,4 +1,4 @@
-public abstract class TransferTransaction extends Transaction
+public class TransferTransaction extends Transaction
 {
   private Account destinationAccount ;
 
@@ -21,49 +21,33 @@ public abstract class TransferTransaction extends Transaction
 
 
       @Override
-    public void execute() {
+      public void execute() {
 
-      Account sourceAccount = getAccount();
+        Account sourceAccount = getAccount();
 
-             //basic validation//
+        if (sourceAccount == null || destinationAccount == null)
+        {
+            throw new IllegalArgumentException("Source and destination accounts are required.");
+        }
+        if (sourceAccount.getAccountNumber().equals(destinationAccount.getAccountNumber()))
+        {
+            throw new IllegalArgumentException("Source and destination accounts must be different.");
+        }
+        if (getAmount() <= 0)
+        {
+            throw new IllegalArgumentException("Transfer amount must be greater than zero.");
+        }
+        if (!(sourceAccount instanceof WithdrawalAccount))
+        {
+            throw new IllegalArgumentException("Source account does not allow withdrawals.");
+        }
+        if (sourceAccount.getBalance() < getAmount())
+        {
+            throw new IllegalArgumentException("Insufficient balance for this transfer.");
+        }
 
-              if(sourceAccount == null || destinationAccount == null){
-                  System.out.println("Transfer Failed: Source or destination account is null.");
-                  return;
-              }
-
-              if(getAmount() <= 0)
-              {
-                  System.out.println("Transfer Failed: Amount is greater than zero.");
-                  return;
-              }
-
-              //check if the account suports Withdrawals//
-
-          if(!(sourceAccount instanceof WithdrawalAccount))
-          {
-              System.out.println("Transfer Failed: Source account is not of type WithdrawalAccount");
-
-              return;
-          }
-
-
-          //check if the Account has enough Money//
-          if(sourceAccount.getBalance() < getAmount())
-          {
-              System.out.println("Transfer Failed: Amount is Insufficient Balance.Available Balance: " + sourceAccount.getBalance() + "Transfer amount: " + getAmount());
-              return;
-          }
-
-          //safe to transfer .. withdraw from source to destination//
-          WithdrawalAccount withdrawableSource = (WithdrawalAccount) sourceAccount;
-          withdrawableSource.withdraw(getAmount());
-          destinationAccount.deposit(getAmount());
-
-          System.out.println("Transfer successful! " + getAmount() + " transferred to " + destinationAccount.getAccountNumber());
+        ((WithdrawalAccount) sourceAccount).withdraw(getAmount());
+        destinationAccount.deposit(getAmount());
       }
 }
-
-
-
 
