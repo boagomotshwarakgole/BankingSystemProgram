@@ -20,6 +20,8 @@ This JavaFX banking system implements the OOAD assignment requirements for a mul
 4. Deposit, withdraw, transfer funds, and apply interest.
 5. Persist the records in the SQLite database.
 
+Cheque accounts can be opened by providing employer and occupation details; no document upload is required. Transfers are made by selecting one of your other accounts from the destination list.
+
 ## Sample database records
 
 The project includes `sample-data.sql` with representative customer, account, and transaction records for demonstration and testing.

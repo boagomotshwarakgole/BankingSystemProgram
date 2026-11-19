@@ -1,7 +1,4 @@
 import java.time.LocalDateTime;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -14,16 +11,12 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
-import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
 import javafx.geometry.Insets;
-import javafx.stage.FileChooser;
-import javafx.stage.Window;
 
 public class AccountController
 {
@@ -33,8 +26,8 @@ public class AccountController
     @FXML private Label incomeLabel;
     @FXML private Label expenseLabel;
     @FXML private ComboBox<Account> accountComboBox;
+    @FXML private ComboBox<Account> destinationAccountComboBox;
     @FXML private ComboBox<String> typeComboBox;
-    @FXML private TextField descriptionField;
     @FXML private TextField amountField;
     @FXML private TableView<Transaction> transactionTable;
     @FXML private TableColumn<Transaction, String> colDate;
@@ -63,8 +56,15 @@ public class AccountController
 
         accountComboBox.setCellFactory(list -> accountCell());
         accountComboBox.setButtonCell(accountCell());
-        accountComboBox.valueProperty().addListener(
-                (observable, oldAccount, newAccount) -> showSelectedAccount());
+        destinationAccountComboBox.setCellFactory(list -> accountCell());
+        destinationAccountComboBox.setButtonCell(accountCell());
+        accountComboBox.valueProperty().addListener((observable, oldAccount, newAccount) -> {
+            showSelectedAccount();
+            refreshDestinationAccounts();
+        });
+        typeComboBox.valueProperty().addListener(
+                (observable, oldType, newType) -> updateDestinationVisibility());
+        updateDestinationVisibility();
 
         colDate.setCellValueFactory(cell ->
                 new javafx.beans.property.SimpleStringProperty(cell.getValue().getTimestamp()));
@@ -112,67 +112,23 @@ public class AccountController
             return;
         }
 
-        String transactionId = "TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
-        String timestamp = LocalDateTime.now().withNano(0).toString();
-
         try
         {
-            Transaction transaction;
-            Account destination = null;
-            if ("DEPOSIT".equals(type))
-            {
-                transaction = new DepositTransaction(transactionId, account, amount, timestamp, account);
-            }
-            else if ("WITHDRAWAL".equals(type))
-            {
-                transaction = new WithdrawalTransaction(transactionId, account, amount, timestamp);
-            }
-            else if ("TRANSFER".equals(type))
-            {
-                String destinationNumber = descriptionField.getText().trim();
-                if (destinationNumber.isEmpty())
-                {
-                    showError("Enter the destination account number in the reference field.");
-                    return;
-                }
-                destination = accountDAO.findById(destinationNumber);
-                if (destination == null)
-                {
-                    showError("Destination account was not found.");
-                    return;
-                }
-                transaction = new TransferTransaction(
-                        transactionId, account, amount, timestamp, account, destination);
-            }
-            else
-            {
-                if (!(account instanceof InterestBearing))
-                {
-                    showError("This account does not earn interest.");
-                    return;
-                }
-                amount = ((InterestBearing) account).calculateInterest();
-                if (amount <= 0)
-                {
-                    showError("There is no interest to apply.");
-                    return;
-                }
-                transaction = new InterestTransaction(transactionId, account, amount, timestamp);
-            }
+            Transaction transaction = createTransaction(type, account, amount);
+            Account destination = transaction instanceof TransferTransaction
+                    ? ((TransferTransaction) transaction).getDestinationAccount()
+                    : null;
 
-            transaction.execute();
-            if (!accountDAO.update(account))
+            if (!accountDAO.processTransaction(transaction, destination))
             {
-                throw new IllegalStateException("The account balance was not updated.");
+                throw new IllegalStateException("The transaction was not completed.");
             }
-            if (destination != null && !accountDAO.update(destination))
-            {
-                throw new IllegalStateException("The destination account balance was not updated.");
-            }
-            transactionDAO.save(transaction);
             amountField.clear();
-            descriptionField.clear();
+            destinationAccountComboBox.getSelectionModel().clearSelection();
             loadAccounts();
+            showInformation(
+                    "Transaction successful",
+                    type + " of " + formatMoney(transaction.getAmount()) + " was completed.");
         }
         catch (IllegalArgumentException | IllegalStateException exception)
         {
@@ -180,11 +136,53 @@ public class AccountController
         }
     }
 
+    private Transaction createTransaction(String type, Account account, double amount)
+    {
+        String transactionId = "TRX-" + UUID.randomUUID()
+                .toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        String timestamp = LocalDateTime.now().withNano(0).toString();
+
+        if ("DEPOSIT".equals(type))
+        {
+            return new DepositTransaction(transactionId, account, amount, timestamp, account);
+        }
+        if ("WITHDRAWAL".equals(type))
+        {
+            return new WithdrawalTransaction(transactionId, account, amount, timestamp);
+        }
+        if ("TRANSFER".equals(type))
+        {
+            Account destination = destinationAccountComboBox.getValue();
+            if (destination == null)
+            {
+                throw new IllegalArgumentException("Select a destination account.");
+            }
+            if (!authentication.getAuthenticatedCustomerId()
+                    .equals(destination.getCustomer().getCustomerID()))
+            {
+                throw new IllegalArgumentException("Transfers are only allowed to accounts that you own.");
+            }
+            return new TransferTransaction(
+                    transactionId, account, amount, timestamp, account, destination);
+        }
+
+        if (!(account instanceof InterestBearing))
+        {
+            throw new IllegalArgumentException("This account does not earn interest.");
+        }
+        double interest = ((InterestBearing) account).calculateInterest();
+        if (interest <= 0)
+        {
+            throw new IllegalArgumentException("There is no interest to apply.");
+        }
+        return new InterestTransaction(transactionId, account, interest, timestamp);
+    }
+
     @FXML
     private void handleClearForm()
     {
         typeComboBox.getSelectionModel().clearSelection();
-        descriptionField.clear();
+        destinationAccountComboBox.getSelectionModel().clearSelection();
         amountField.clear();
     }
 
@@ -204,9 +202,6 @@ public class AccountController
         employerAddress.setPromptText("Employer address");
         TextField occupation = new TextField();
         occupation.setPromptText("Occupation");
-        Label proofName = new Label("No proof selected");
-        File[] selectedProof = new File[1];
-        Button chooseProof = new Button("Choose proof of employment");
 
         GridPane form = new GridPane();
         form.setHgap(10);
@@ -215,26 +210,21 @@ public class AccountController
         form.addRow(0, new Label("Account type"), accountType);
         form.addRow(1, new Label("Opening deposit (BWP)"), openingDeposit);
         Label requirement = new Label(
-                "Investment accounts require at least BWP 500. Cheque accounts require employment details and proof.");
+                "Investment accounts require at least BWP 500. Cheque accounts require employer and occupation details.");
         requirement.setWrapText(true);
         form.add(requirement, 0, 2, 2, 1);
         Label employerNameLabel = new Label("Employer name");
         Label employerAddressLabel = new Label("Employer address");
         Label occupationLabel = new Label("Occupation");
-        Label proofLabel = new Label("Employment proof");
-        HBox proofSelection = new HBox(8, chooseProof, proofName);
         form.addRow(3, employerNameLabel, employerName);
         form.addRow(4, employerAddressLabel, employerAddress);
         form.addRow(5, occupationLabel, occupation);
-        form.addRow(6, proofLabel, proofSelection);
 
         Runnable updateEmploymentFields = () -> {
             boolean cheque = "CHEQUE".equals(accountType.getValue());
             for (javafx.scene.Node node : List.of(
                     employerNameLabel, employerName,
-                    employerAddressLabel, employerAddress,
-                    occupationLabel, occupation,
-                    proofLabel, proofSelection))
+                    employerAddressLabel, employerAddress))
             {
                 node.setVisible(cheque);
                 node.setManaged(cheque);
@@ -242,20 +232,6 @@ public class AccountController
         };
         accountType.valueProperty().addListener((observable, oldType, newType) -> updateEmploymentFields.run());
         updateEmploymentFields.run();
-
-        chooseProof.setOnAction(event -> {
-            FileChooser chooser = new FileChooser();
-            chooser.setTitle("Select proof of employment");
-            chooser.getExtensionFilters().add(
-                    new FileChooser.ExtensionFilter("Employment proof (PDF, PNG, JPEG)", "*.pdf", "*.png", "*.jpg", "*.jpeg"));
-            Window window = chooseProof.getScene() == null ? null : chooseProof.getScene().getWindow();
-            File file = chooser.showOpenDialog(window);
-            if (file != null)
-            {
-                selectedProof[0] = file;
-                proofName.setText(file.getName());
-            }
-        });
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("Open an account");
@@ -280,32 +256,6 @@ public class AccountController
             return;
         }
 
-        byte[] proofData = null;
-        String proofFileName = null;
-        if ("CHEQUE".equals(accountType.getValue()))
-        {
-            if (selectedProof[0] == null)
-            {
-                showError("Upload proof of employment to open a cheque account.");
-                return;
-            }
-            try
-            {
-                if (Files.size(selectedProof[0].toPath()) > 5 * 1024 * 1024)
-                {
-                    showError("Employment proof must be 5 MB or smaller.");
-                    return;
-                }
-                proofData = Files.readAllBytes(selectedProof[0].toPath());
-                proofFileName = selectedProof[0].getName();
-            }
-            catch (IOException exception)
-            {
-                showError("Could not read the selected employment proof: " + exception.getMessage());
-                return;
-            }
-        }
-
         try
         {
             Account opened = accountOpeningService.openAccount(
@@ -314,9 +264,7 @@ public class AccountController
                     deposit,
                     employerName.getText(),
                     employerAddress.getText(),
-                    occupation.getText(),
-                    proofFileName,
-                    proofData);
+                    occupation.getText());
             loadAccounts();
             accountComboBox.getItems().stream()
                     .filter(account -> account.getAccountNumber().equals(opened.getAccountNumber()))
@@ -345,6 +293,7 @@ public class AccountController
             List<Account> accounts =
                     accountDAO.getAllAccountsByCustomerId(authentication.getAuthenticatedCustomerId());
             accountComboBox.setItems(FXCollections.observableArrayList(accounts));
+            refreshDestinationAccounts();
             if (!accounts.isEmpty())
             {
                 accountComboBox.getSelectionModel().selectFirst();
@@ -373,10 +322,7 @@ public class AccountController
         }
 
         accountNumberLabel.setText(selected.getAccountType() + ": " + selected.getAccountNumber());
-        double totalBalance = accountComboBox.getItems().stream()
-                .mapToDouble(Account::getBalance)
-                .sum();
-        balanceLabel.setText(formatMoney(totalBalance));
+        balanceLabel.setText(formatMoney(selected.getBalance()));
 
         try
         {
@@ -427,9 +373,34 @@ public class AccountController
             {
                 super.updateItem(account, empty);
                 setText(empty || account == null ? null
-                        : account.getAccountNumber() + " (" + account.getAccountType() + ")");
+                        : account.getAccountType() + " - "
+                                + account.getAccountNumber().substring(
+                                        Math.max(0, account.getAccountNumber().length() - 6)));
             }
         };
+    }
+
+    private void refreshDestinationAccounts()
+    {
+        List<Account> accounts = accountComboBox.getItems();
+        Account source = accountComboBox.getValue();
+        destinationAccountComboBox.setItems(FXCollections.observableArrayList(
+                accounts.stream()
+                        .filter(account -> source == null
+                                || !account.getAccountNumber().equals(source.getAccountNumber()))
+                        .toList()));
+        destinationAccountComboBox.getSelectionModel().clearSelection();
+    }
+
+    private void updateDestinationVisibility()
+    {
+        boolean transfer = "TRANSFER".equals(typeComboBox.getValue());
+        destinationAccountComboBox.setVisible(transfer);
+        destinationAccountComboBox.setManaged(transfer);
+        if (!transfer)
+        {
+            destinationAccountComboBox.getSelectionModel().clearSelection();
+        }
     }
 
     private String describe(Transaction transaction)

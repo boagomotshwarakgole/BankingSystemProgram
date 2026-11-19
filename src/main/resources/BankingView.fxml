@@ -140,7 +140,7 @@
                   <HBox alignment="CENTER_LEFT" spacing="8.0">
                      <children>
                         <ComboBox fx:id="typeComboBox" minWidth="110.0" prefHeight="36.0" prefWidth="145.0" promptText="Transaction type" />
-                        <TextField fx:id="descriptionField" minWidth="130.0" prefHeight="36.0" promptText="Destination account for transfer" HBox.hgrow="ALWAYS" />
+                        <ComboBox fx:id="destinationAccountComboBox" minWidth="130.0" prefHeight="36.0" promptText="Destination account" HBox.hgrow="ALWAYS" />
                         <TextField fx:id="amountField" minWidth="120.0" prefHeight="36.0" prefWidth="150.0" promptText="Amount (BWP)" />
                         <Button mnemonicParsing="false" onAction="#handleTransaction" prefHeight="36.0" prefWidth="96.0" style="-fx-background-color: #1A2F24; -fx-background-radius: 4;" text="Submit" textFill="WHITE">
                            <font>

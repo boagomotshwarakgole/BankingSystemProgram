@@ -59,8 +59,6 @@ public class BankingSystemIntegrationTest
                 2500,
                 null,
                 null,
-                null,
-                null,
                 null);
 
         Account investmentAccount = accountOpeningService.openAccount(
@@ -69,14 +67,22 @@ public class BankingSystemIntegrationTest
                 1400,
                 null,
                 null,
-                null,
-                null,
                 null);
+
+        Account chequeAccount = accountOpeningService.openAccount(
+                authentication.getAuthenticatedCustomerId(),
+                "CHEQUE",
+                1000,
+                "Example Employer",
+                "1 Main Road",
+                "Accountant");
 
         AccountDAO accountDAO = new AccountDaoImpl();
         List<Account> customerAccounts = accountDAO.getAllAccountsByCustomerId(
                 authentication.getAuthenticatedCustomerId());
-        assertEquals(3, customerAccounts.size());
+        assertEquals(4, customerAccounts.size());
+        assertTrue(customerAccounts.stream()
+                .anyMatch(account -> account.getAccountNumber().equals(chequeAccount.getAccountNumber())));
 
         savingsAccount.deposit(750);
         assertTrue(accountDAO.update(savingsAccount));
@@ -86,13 +92,13 @@ public class BankingSystemIntegrationTest
 
         TransferTransaction transfer = new TransferTransaction(
                 "TRX-INTEGRATION-1",
-                savingsAccount,
+                chequeAccount,
                 300,
                 LocalDateTime.now().withNano(0).toString(),
-                savingsAccount,
+                chequeAccount,
                 targetAccount);
         transfer.execute();
-        assertTrue(accountDAO.update(savingsAccount));
+        assertTrue(accountDAO.update(chequeAccount));
         assertTrue(accountDAO.update(targetAccount));
 
         TransactionDAO transactionDAO = new TransactionDaoImpl();

@@ -24,9 +24,7 @@ public class AccountOpeningService
             double openingDeposit,
             String companyName,
             String companyAddress,
-            String occupation,
-            String proofFileName,
-            byte[] proofFileData)
+            String occupation)
     {
         if (!Double.isFinite(openingDeposit) || openingDeposit < 0)
         {
@@ -63,10 +61,6 @@ public class AccountOpeningService
                 requireText(companyName, "Employer name");
                 requireText(companyAddress, "Employer address");
                 requireText(occupation, "Occupation");
-                if (proofFileName == null || proofFileData == null)
-                {
-                    throw new IllegalArgumentException("Upload proof of employment to open a cheque account.");
-                }
                 account = new ChequeAccount(
                         companyName.trim(),
                         companyAddress.trim(),
@@ -81,7 +75,7 @@ public class AccountOpeningService
                 throw new IllegalArgumentException("Select Savings, Investment, or Cheque as the account type.");
         }
 
-        accountDAO.openAccount(account, occupation, proofFileName, proofFileData);
+        accountDAO.openAccount(account, occupation);
         return account;
     }
 

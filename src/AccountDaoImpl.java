@@ -2,6 +2,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,9 +35,7 @@ public class AccountDaoImpl implements AccountDAO
     @Override
     public void openAccount(
             Account account,
-            String occupation,
-            String proofFileName,
-            byte[] proofFileData)
+            String occupation)
     {
         if (!Double.isFinite(account.getBalance()) || account.getBalance() < 0)
         {
@@ -61,9 +60,7 @@ public class AccountDaoImpl implements AccountDAO
             validateEmploymentDetails(
                     cheque.getCompanyName(),
                     cheque.getCompanyAddress(),
-                    occupation,
-                    proofFileName,
-                    proofFileData);
+                    occupation);
         }
         else if ("INVESTMENT".equals(accountType) && account.getBalance() < 500)
         {
@@ -81,9 +78,6 @@ public class AccountDaoImpl implements AccountDAO
                 + "VALUES (?, ?, ?, ?, ?, ?)";
         String chequeDetailsSql = "INSERT INTO ChequeAccountDetails "
                 + "(account_number, company_name, company_address) VALUES (?, ?, ?)";
-        String proofSql = "INSERT INTO EmploymentProofs (account_number, file_name, file_data) "
-                + "VALUES (?, ?, ?)";
-
         try (Connection connection = DatabaseConnection.getConnection())
         {
             connection.setAutoCommit(false);
@@ -126,18 +120,12 @@ public class AccountDaoImpl implements AccountDAO
                 if (chequeAccount)
                 {
                     ChequeAccount cheque = (ChequeAccount) account;
-                    try (PreparedStatement details = connection.prepareStatement(chequeDetailsSql);
-                         PreparedStatement proof = connection.prepareStatement(proofSql))
+                    try (PreparedStatement details = connection.prepareStatement(chequeDetailsSql))
                     {
                         details.setString(1, account.getAccountNumber());
                         details.setString(2, cheque.getCompanyName().trim());
                         details.setString(3, cheque.getCompanyAddress().trim());
                         details.executeUpdate();
-
-                        proof.setString(1, account.getAccountNumber());
-                        proof.setString(2, proofFileName.trim());
-                        proof.setBytes(3, proofFileData);
-                        proof.executeUpdate();
                     }
                 }
 
@@ -259,6 +247,77 @@ public class AccountDaoImpl implements AccountDAO
     }
 
     @Override
+    public boolean processTransaction(Transaction transaction, Account destinationAccount)
+    {
+        if (transaction == null)
+        {
+            throw new IllegalArgumentException("Transaction is required.");
+        }
+
+        try (Connection connection = DatabaseConnection.getConnection())
+        {
+            connection.setAutoCommit(false);
+            try
+            {
+                transaction.execute();
+                updateBalance(connection, transaction.getAccount());
+
+                if (destinationAccount != null)
+                {
+                    updateBalance(connection, destinationAccount);
+                }
+                else if (transaction instanceof TransferTransaction)
+                {
+                    updateBalance(
+                            connection,
+                            ((TransferTransaction) transaction).getDestinationAccount());
+                }
+
+                String sql = "INSERT INTO Transactions "
+                        + "(transaction_id, transaction_type, account_number, "
+                        + "destination_account_number, amount, transaction_time) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)";
+                try (PreparedStatement statement = connection.prepareStatement(sql))
+                {
+                    statement.setString(1, transaction.getTransactionID());
+                    statement.setString(2, getTransactionType(transaction));
+                    statement.setString(3, transaction.getAccount().getAccountNumber());
+                    if (transaction instanceof TransferTransaction)
+                    {
+                        statement.setString(
+                                4,
+                                ((TransferTransaction) transaction)
+                                        .getDestinationAccount().getAccountNumber());
+                    }
+                    else
+                    {
+                        statement.setNull(4, java.sql.Types.VARCHAR);
+                    }
+                    statement.setDouble(5, transaction.getAmount());
+                    statement.setString(
+                            6,
+                            LocalDateTime.parse(transaction.getTimestamp()).toString());
+                    statement.executeUpdate();
+                }
+
+                connection.commit();
+                return true;
+            }
+            catch (SQLException | RuntimeException exception)
+            {
+                connection.rollback();
+                throw exception;
+            }
+        }
+        catch (SQLException exception)
+        {
+            throw new IllegalStateException(
+                    "Could not save the transaction consistently.",
+                    exception);
+        }
+    }
+
+    @Override
     public boolean delete(Account account)
     {
         String sql = "DELETE FROM Accounts WHERE account_number = ?";
@@ -320,6 +379,42 @@ public class AccountDaoImpl implements AccountDAO
         return accounts;
     }
 
+    private void updateBalance(Connection connection, Account account) throws SQLException
+    {
+        String sql = "UPDATE Accounts SET balance = ? WHERE account_number = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql))
+        {
+            statement.setDouble(1, account.getBalance());
+            statement.setString(2, account.getAccountNumber());
+            if (statement.executeUpdate() != 1)
+            {
+                throw new SQLException("Account balance was not updated: "
+                        + account.getAccountNumber());
+            }
+        }
+    }
+
+    private String getTransactionType(Transaction transaction)
+    {
+        if (transaction instanceof TransferTransaction)
+        {
+            return "TRANSFER";
+        }
+        if (transaction instanceof DepositTransaction)
+        {
+            return "DEPOSIT";
+        }
+        if (transaction instanceof WithdrawalTransaction)
+        {
+            return "WITHDRAWAL";
+        }
+        if (transaction instanceof InterestTransaction)
+        {
+            return "INTEREST";
+        }
+        throw new IllegalArgumentException("Unsupported transaction type.");
+    }
+
     private String getAccountType(Account account)
     {
         if (account instanceof SavingsAccount)
@@ -340,9 +435,7 @@ public class AccountDaoImpl implements AccountDAO
     private void validateEmploymentDetails(
             String companyName,
             String companyAddress,
-            String occupation,
-            String proofFileName,
-            byte[] proofFileData)
+            String occupation)
     {
         if (companyName == null || companyName.isBlank()
                 || companyAddress == null || companyAddress.isBlank()
@@ -350,40 +443,6 @@ public class AccountDaoImpl implements AccountDAO
         {
             throw new IllegalArgumentException(
                     "Employer name, employer address, and occupation are required for a cheque account.");
-        }
-        if (proofFileName == null || proofFileName.isBlank()
-                || proofFileData == null || proofFileData.length == 0)
-        {
-            throw new IllegalArgumentException("Upload proof of employment to open a cheque account.");
-        }
-        if (proofFileData.length > 5 * 1024 * 1024)
-        {
-            throw new IllegalArgumentException("Employment proof must be 5 MB or smaller.");
-        }
-
-        String lowerName = proofFileName.toLowerCase(java.util.Locale.ROOT);
-        boolean pdf = lowerName.endsWith(".pdf")
-                && proofFileData.length >= 5
-                && proofFileData[0] == '%'
-                && proofFileData[1] == 'P'
-                && proofFileData[2] == 'D'
-                && proofFileData[3] == 'F'
-                && proofFileData[4] == '-';
-        boolean png = lowerName.endsWith(".png")
-                && proofFileData.length >= 8
-                && (proofFileData[0] & 0xFF) == 0x89
-                && proofFileData[1] == 'P'
-                && proofFileData[2] == 'N'
-                && proofFileData[3] == 'G';
-        boolean jpeg = (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg"))
-                && proofFileData.length >= 3
-                && (proofFileData[0] & 0xFF) == 0xFF
-                && (proofFileData[1] & 0xFF) == 0xD8
-                && (proofFileData[2] & 0xFF) == 0xFF;
-        if (!pdf && !png && !jpeg)
-        {
-            throw new IllegalArgumentException(
-                    "Employment proof must be a valid PDF, PNG, or JPEG file.");
         }
     }
 }

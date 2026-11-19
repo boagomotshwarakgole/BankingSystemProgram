@@ -67,6 +67,8 @@ public final class DatabaseConnection
         "CREATE TABLE IF NOT EXISTS PasswordResetTokens ("
                 + "user_id INTEGER PRIMARY KEY REFERENCES UserCredentials(user_id) ON DELETE CASCADE, "
                 + "token_hash CHAR(64) NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS MonthlyInterestRuns ("
+                + "year_month VARCHAR(7) PRIMARY KEY)",
         "CREATE INDEX IF NOT EXISTS IX_Accounts_CustomerId ON Accounts(customer_id)",
         "CREATE INDEX IF NOT EXISTS IX_Transactions_AccountTime "
                 + "ON Transactions(account_number, transaction_time)",
